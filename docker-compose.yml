@@ -1,0 +1,134 @@
+version: "3.9"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: dbuser
+      POSTGRES_PASSWORD: change_this_postgres_password
+      POSTGRES_DB: postgres
+    volumes:
+      - ${USERPROFILE}/docker-stack/postgres:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbuser"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # pgAdmin - PostgreSQL Administration Tool
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    restart: unless-stopped
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: change_this_pgadmin_password
+    volumes:
+      - ${USERPROFILE}/docker-stack/pgadmin:/var/lib/pgadmin
+    networks:
+      - app_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # n8n - Workflow Automation Tool
+  n8n:
+    image: ghcr.io/n8n-io/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    user: "1000:1000"
+    ports:
+      - "5678:5678"
+    environment:
+      # Database Configuration
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=dbuser
+      - DB_POSTGRESDB_PASSWORD=change_this_postgres_password
+      
+      # Server Configuration
+      - WEBHOOK_URL=http://localhost:5678
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - N8N_SECURE_COOKIE=false
+      - NODE_ENV=production
+      - GENERIC_TIMEZONE=UTC
+      
+      # Authentication
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=change_this_n8n_password
+      
+      # SMTP Configuration (Optional - configure if you need email notifications)
+      # - N8N_EMAIL_MODE=smtp
+      # - N8N_SMTP_HOST=smtp.example.com
+      # - N8N_SMTP_PORT=587
+      # - N8N_SMTP_USER=your_smtp_user
+      # - N8N_SMTP_PASS=your_smtp_password
+      # - N8N_SMTP_SENDER=n8n <noreply@example.com>
+      # - N8N_SMTP_SSL=false
+      # - N8N_SMTP_STARTTLS=true
+      
+      # Security & Performance
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=true
+    volumes:
+      - ${USERPROFILE}/docker-stack/n8n:/home/node/.n8n
+      - ${USERPROFILE}/docker-stack/n8n-files:/files
+    networks:
+      - app_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Neo4j - Graph Database
+  neo4j:
+    image: neo4j:latest
+    container_name: neo4j
+    restart: always
+    ports:
+      - "7474:7474"   # Neo4j Browser (HTTP)
+      - "7687:7687"   # Bolt Protocol
+    volumes:
+      - ${USERPROFILE}/docker-stack/neo4j-data:/data
+      - ${USERPROFILE}/docker-stack/neo4j-logs:/logs
+      - ${USERPROFILE}/docker-stack/neo4j-import:/var/lib/neo4j/import
+      - ${USERPROFILE}/docker-stack/neo4j-plugins:/plugins
+    environment:
+      # Authentication
+      - NEO4J_AUTH=neo4j/change_this_neo4j_password
+      
+      # APOC Plugin Configuration
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_apoc_import_file_use__neo4j__config=true
+      
+      # Memory Configuration (adjust based on your system)
+      # - NEO4J_dbms_memory_heap_initial__size=512m
+      # - NEO4J_dbms_memory_heap_max__size=2G
+      # - NEO4J_dbms_memory_pagecache_size=512m
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p change_this_neo4j_password 'RETURN 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  app_network:
+    driver: bridge
